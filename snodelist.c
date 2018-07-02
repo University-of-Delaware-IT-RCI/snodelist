@@ -21,7 +21,7 @@
  * hostlist API (rather than implementing the parsing itself).
  *
  */
- 
+
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -58,6 +58,7 @@ static struct option snodelist_opts[] = {
                         { "expand",       no_argument,        NULL, 'e' },
                         { "compress",     no_argument,        NULL, 'c' },
                         { "include-env",  optional_argument,  NULL, 'i' },
+                        { "nodelist",     required_argument,  NULL, 'l' },
                         { "unique",       no_argument,        NULL, 'u' },
                         { "delimiter",    required_argument,  NULL, 'd' },
                         { "machinefile",  no_argument,        NULL, 'm' },
@@ -66,7 +67,7 @@ static struct option snodelist_opts[] = {
                         { NULL,           0,                  NULL,  0  }
                       };
 
-static const char   *snodelist_opts_string = "heci:ud:mf:n";
+static const char   *snodelist_opts_string = "heci:l:ud:mf:n";
 
 //
 
@@ -94,7 +95,9 @@ usage(
       "\n"
       "    -i/--include-env{=<varname>} include a host list present in the environment\n"
       "                                 variable <varname>; omitting the <varname> defaults\n"
-      "                                 to using SLURM_JOB_NODELIST\n"
+      "                                 to using SLURM_JOB_NODELIST (can be used multiple times)\n"
+      "    -l/--nodelist=<file>         read node expressions from the given <file>; use a dash\n"
+      "                                 (-) to read from stdin (can be used multiple times)\n"
       "    -u/--unique                  remove any duplicate names (for expand and compress\n"
       "                                 modes)\n"
       "\n"
@@ -156,14 +159,14 @@ task_count_next(
     if ( *(tc->cur_ptr) ) {
       char          *end_ptr = NULL;
       long          c = strtol(tc->cur_ptr, &end_ptr, 10);
-      
+
       if ( end_ptr > tc->cur_ptr ) {
         tc->value = c;
         if ( *end_ptr == '(' ) {
           end_ptr++;
           if ( *end_ptr == 'x' ) {
             char    *alt_end_ptr = NULL;
-            
+
             end_ptr++;
             c = strtol(end_ptr, &alt_end_ptr, 10);
             if ( (c > 0) && (alt_end_ptr > end_ptr) ) {
@@ -220,8 +223,61 @@ add_from_env(
 )
 {
   char          *env_var_value = getenv(env_var_name);
-  
+
   if ( env_var_value ) slurm_hostlist_push(the_hostlist, env_var_value);
+}
+
+//
+
+bool
+add_from_file(
+  hostlist_t    the_hostlist,
+  const char    *file
+)
+{
+  bool          rc = false;
+  FILE          *fptr = NULL;
+  
+  if ( *file == '-' && *(file+1) == '\0' ) {
+    fptr = stdin;
+  } else {
+    fptr = fopen(file, "r");
+  }
+  if ( fptr ) {
+    char      *line = NULL;
+    size_t    line_len = 0;
+    
+    rc = true;
+    while ( ! feof(fptr) ) {
+      if ( getline(&line, &line_len, fptr) > 0 ) {
+        char  *p = line;
+        
+        while ( *p ) {
+          char  *s;
+          
+          // Drop leading whitespace:
+          while ( *p && isspace(*p) ) p++;
+          // End of the line or a comment character, exit this loop:
+          if ( ! *p || (*p == '#') ) break;
+          s = p;
+          // Get past the next expression:
+          while ( *p && ! isspace(*p) ) p++;
+          if ( p > s ) {
+            if ( *p ) {
+              *p = '\0';
+              p++;
+            }
+            slurm_hostlist_push(the_hostlist, s);
+          }
+        }
+      }
+    }
+    if ( line ) free(line);
+    if ( fptr != stdin ) fclose(fptr);
+  } else {
+    fprintf(stderr, "ERROR:  unable to open nodelist: %s\n", file);
+  }
+  return rc;
 }
 
 //
@@ -235,12 +291,12 @@ print_machinefile(
 )
 {
   bool          has_count = false;
-  
+
   if ( strstr(format, "%c") || strstr(format, "%C") ) {
     has_count = true;
   } else {
     const char  *s = format;
-    
+
     while ( (s = strstr(s, "%[")) ) {
       s += 2;
       while ( *s && (*s != ']') ) s++;
@@ -258,30 +314,30 @@ print_machinefile(
     const char  *node_name = slurm_hostlist_shift(the_hostlist);
     const char  *format_ptr = format;
     int         task_count = -1;
-    
+
     if ( ! node_name ) break;
-    
+
     task_count = task_count_next(tc);
     if ( task_count <= 0 ) break;
-    
+
     if ( has_count || no_repeats ) {
       while ( *format_ptr ) {
         switch ( *format_ptr ) {
-        
+
           case '%': {
             format_ptr++;
             switch ( *format_ptr ) {
-            
+
               case '%':
                 fputc('%', stdout);
                 format_ptr++;
                 break;
-              
+
               case 'h':
                 fprintf(stdout, "%s", node_name);
                 format_ptr++;
                 break;
-                
+
               case 'C':
                 if ( task_count <= 1 ) {
                   format_ptr++;
@@ -291,16 +347,16 @@ print_machinefile(
                 fprintf(stdout, "%d", task_count);
                 format_ptr++;
                 break;
-              
+
               case '[': {
                 const char    *delim = ++format_ptr;
                 int           delim_len = 0;
-                
+
                 while ( *format_ptr && (*format_ptr != ']') ) delim_len++, format_ptr++;
                 if ( *format_ptr == ']' ) {
                   format_ptr++;
                   switch ( *format_ptr ) {
-                    
+
                     case 'C':
                       if ( task_count <= 1 ) {
                         format_ptr++;
@@ -311,7 +367,7 @@ print_machinefile(
                       fprintf(stdout, "%d", task_count);
                       format_ptr++;
                       break;
-                    
+
                     default:
                       format_ptr++;
                     case '\0':
@@ -323,18 +379,18 @@ print_machinefile(
                 }
                 break;
               }
-              
+
               case '\0':
                 break;
-              
+
               default:
                 format_ptr++;
                 break;
-            
+
             }
             break;
           }
-          
+
           default:
             fputc(*format_ptr, stdout);
             format_ptr++;
@@ -347,32 +403,32 @@ print_machinefile(
         format_ptr = format;
         while ( *format_ptr ) {
           switch ( *format_ptr ) {
-          
+
             case '%': {
               format_ptr++;
               switch ( *format_ptr ) {
-              
+
                 case '%':
                   fputc('%', stdout);
                   format_ptr++;
                   break;
-                
+
                 case 'h':
                   fprintf(stdout, "%s", node_name);
                   format_ptr++;
                   break;
-                
+
                 case '\0':
                   break;
-                
+
                 default:
                   format_ptr++;
                   break;
-              
+
               }
               break;
             }
-            
+
             default:
               fputc(*format_ptr, stdout);
               format_ptr++;
@@ -401,25 +457,25 @@ main(
   const char        *delimiter = snodelist_default_delimiter;
   const char        *machinefile_format = "%h%[:]C";
   hostlist_t        hostlist = slurm_hostlist_create("");
-  
+
   while ( (optc = getopt_long(argc, argv, snodelist_opts_string, snodelist_opts, NULL)) != -1 ) {
     switch ( optc ) {
-    
+
       case 'h':
         usage(argv[0]);
         exit(0);
-      
+
       case 'e':
         mode = snodelist_mode_expand;
         break;
-      
+
       case 'c':
         mode = snodelist_mode_compress;
         break;
-      
+
       case 'i': {
         const char    *env_var_name;
-        
+
          if ( optc == ':' ) {
           env_var_name = "SLURM_JOB_NODELIST";
         } else if ( optarg && *optarg ) {
@@ -431,11 +487,22 @@ main(
         add_from_env(hostlist, env_var_name);
         break;
       }
-      
+
+      case 'l':
+        if ( optarg && *optarg ) {
+          if ( ! add_from_file(hostlist, optarg) ) {
+            exit(EINVAL);
+          }
+        } else {
+          fprintf(stderr, "ERROR:  invalid file path provided with -f/--nodelist option\n");
+          exit(EINVAL);
+        }
+        break;
+
       case 'u':
         do_uniq = true;
         break;
-      
+
       case 'd':
         if ( ! optarg ) {
           fprintf(stderr, "ERROR:  no delimiter string provided with -d/--delimiter option\n");
@@ -443,62 +510,62 @@ main(
         }
         delimiter = optarg;
         break;
-      
+
       case 'm':
         mode = snodelist_mode_machinefile;
         break;
-      
+
       case 'f':
         machinefile_format = optarg;
         break;
-      
+
       case 'n':
         no_repeats = true;
         break;
-        
+
     }
   }
-  
+
   if ( mode == snodelist_mode_machinefile ) {
     const char        *node_list, *task_count_list;
     task_count_t      tc;
-    
+
     slurm_hostlist_destroy(hostlist); hostlist = NULL;
-    
+
     node_list = getenv("SLURM_JOB_NODELIST");
     if ( ! node_list || ! *node_list ) {
       fprintf(stderr, "ERROR:  no SLURM_JOB_NODELIST in environment\n");
       exit(EINVAL);
     }
-    
+
     task_count_list = getenv("SLURM_TASKS_PER_NODE");
     if ( ! task_count_list || ! *task_count_list ) {
       fprintf(stderr, "ERROR:  no SLURM_TASKS_PER_NODE in environment\n");
       exit(EINVAL);
     }
     task_count_init(&tc, task_count_list);
-    
+
     hostlist = slurm_hostlist_create(node_list);
     if ( slurm_hostlist_count(hostlist) > 0 ) {
       print_machinefile(hostlist, &tc, machinefile_format, no_repeats);
     }
   } else {
     if ( optind == argc && ! did_include_an_env_var ) add_from_env(hostlist, "SLURM_JOB_NODELIST");
-    
+
     while ( optind < argc ) {
       slurm_hostlist_push(hostlist, argv[optind]);
       optind++;
     }
-    
+
     if ( slurm_hostlist_count(hostlist) > 0 ) {
       if ( do_uniq ) slurm_hostlist_uniq(hostlist);
-      
+
       switch ( mode ) {
-      
+
         case snodelist_mode_expand: {
           char      *outNode;
           bool      showDelim = false;
-          
+
           while ( (outNode = slurm_hostlist_shift(hostlist)) ) {
             printf("%s%s", (showDelim ? delimiter : ""), outNode);
             showDelim = true;
@@ -507,21 +574,21 @@ main(
           fputc('\n', stdout);
           break;
         }
-      
+
         case snodelist_mode_compress: {
           char      *outList = slurm_hostlist_ranged_string_malloc(hostlist);
-          
+
           if ( outList ) {
             printf("%s\n", outList);
             free((void*)outList);
           }
           break;
         }
-      
+
       }
     }
   }
   slurm_hostlist_destroy(hostlist);
-  
+
   return 0;
 }
