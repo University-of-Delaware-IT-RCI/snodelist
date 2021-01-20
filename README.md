@@ -28,49 +28,54 @@ The available command line options can be summarized using the `--help` flag:
 $ snodelist  -h
 usage:
 
-  snodelist {options} {<host expression> {<host expression> ..}}
+  ./snodelist {options} {<host expression> {<host expression> ..}}
 
  options:
 
-  -h/--help                      show this information
+  -h/--help                        show this information
 
   EXPAND / COMPRESS MODES
 
-    -e/--expand                  output as individual names (default mode)
-      -d/--delimiter <str>       use <str> between each hostname in expanded mode
-                                 (default:  a newline character)
+    -e/--expand                    output as individual names (default mode)
+      -d/--delimiter <str>         use <str> between each hostname in expanded mode
+                                   (default:  a newline character)
 
-    -c/--compress                output in compressed (compact) form
+    -c/--compress                  output in compressed (compact) form
 
-    -i/--include-env{=<varname>} include a host list present in the environment
-                                 variable <varname>; omitting the <varname> defaults
-                                 to using SLURM_JOB_NODELIST
-    -u/--unique                  remove any duplicate names (for expand and compress
-                                 modes)
+    -i/--include-env{=<varname>}   include a host list present in the environment
+                                   variable <varname>; omitting the <varname> defaults
+                                   to using SLURM_JOB_NODELIST (can be used multiple times)
+    -l/--nodelist=<file>           read node expressions from the given <file>; use a dash
+                                   (-) to read from stdin (can be used multiple times)
+    -X/--exclude-env=<varname>     remove all hosts present in the environment variable
+                                   <varname> from the final node list
+    -x--exclude=<host expression>  remove hosts from the final node list
+    -u/--unique                    remove any duplicate names (for expand and compress
+                                   modes)
 
     NOTE:  In the expand/compress modes, if no host lists are explicitly added then
            SLURM_JOB_NODELIST is checked by default.
 
   MACHINEFILE MODE
 
-    -m/--machinefile             generate a MPI-style machine file using the
-                                 SLURM_JOB_NODELIST and SLURM_TASKS_PER_NODE
-                                 environment variables
-      -f/--format=<line-format>  apply the given <line-format> to each host in the
-                                 list; the <line-format> can include the following
-                                 tokens that are filled-in for each host:
+    -m/--machinefile               generate a MPI-style machine file using the
+                                   SLURM_JOB_NODELIST and SLURM_TASKS_PER_NODE
+                                   environment variables
+      -f/--format=<line-format>    apply the given <line-format> to each host in the
+                                   list; the <line-format> can include the following
+                                   tokens that are filled-in for each host:
 
-                                   %%       literal percent sign
-                                   %h      host name
-                                   %c      rank count
-                                   %C      optional rank count (omitted if 1)
-                                   %[:]c   rank count with preceding colon
-                                   %[:]C   optional rank count with preceding colon
+                                     %%       literal percent sign
+                                     %h      host name
+                                     %c      rank count
+                                     %C      optional rank count (omitted if 1)
+                                     %[:]c   rank count with preceding colon
+                                     %[:]C   optional rank count with preceding colon
 
-                                 the colon in the latter two tokens can be any string
-                                 of punctuation in the set [-_:;.,/\|] or whitespace
-      -n/--no-repeats            if the <line-format> lacks a count token, do not
-                                 repeat the line once for each task on the host
+                                   the colon in the latter two tokens can be any string
+                                   of punctuation in the set [-_:;.,/\|] or whitespace
+      -n/--no-repeats              if the <line-format> lacks a count token, do not
+                                   repeat the line once for each task on the host
 
 ```
 

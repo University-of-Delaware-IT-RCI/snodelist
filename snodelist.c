@@ -58,6 +58,8 @@ static struct option snodelist_opts[] = {
                         { "expand",       no_argument,        NULL, 'e' },
                         { "compress",     no_argument,        NULL, 'c' },
                         { "include-env",  optional_argument,  NULL, 'i' },
+                        { "exclude-env",  required_argument,  NULL, 'X' },
+                        { "exclude",      required_argument,  NULL, 'x' },
                         { "nodelist",     required_argument,  NULL, 'l' },
                         { "unique",       no_argument,        NULL, 'u' },
                         { "delimiter",    required_argument,  NULL, 'd' },
@@ -67,7 +69,7 @@ static struct option snodelist_opts[] = {
                         { NULL,           0,                  NULL,  0  }
                       };
 
-static const char   *snodelist_opts_string = "heci:l:ud:mf:n";
+static const char   *snodelist_opts_string = "heci:X:x:l:ud:mf:n";
 
 //
 
@@ -83,47 +85,50 @@ usage(
       "\n"
       " options:\n"
       "\n"
-      "  -h/--help                      show this information\n"
+      "  -h/--help                        show this information\n"
       "\n"
       "  EXPAND / COMPRESS MODES\n"
       "\n"
-      "    -e/--expand                  output as individual names (default mode)\n"
-      "      -d/--delimiter <str>       use <str> between each hostname in expanded mode\n"
-      "                                 (default:  a newline character)\n"
+      "    -e/--expand                    output as individual names (default mode)\n"
+      "      -d/--delimiter <str>         use <str> between each hostname in expanded mode\n"
+      "                                   (default:  a newline character)\n"
       "\n"
-      "    -c/--compress                output in compressed (compact) form\n"
+      "    -c/--compress                  output in compressed (compact) form\n"
       "\n"
-      "    -i/--include-env{=<varname>} include a host list present in the environment\n"
-      "                                 variable <varname>; omitting the <varname> defaults\n"
-      "                                 to using SLURM_JOB_NODELIST (can be used multiple times)\n"
-      "    -l/--nodelist=<file>         read node expressions from the given <file>; use a dash\n"
-      "                                 (-) to read from stdin (can be used multiple times)\n"
-      "    -u/--unique                  remove any duplicate names (for expand and compress\n"
-      "                                 modes)\n"
+      "    -i/--include-env{=<varname>}   include a host list present in the environment\n"
+      "                                   variable <varname>; omitting the <varname> defaults\n"
+      "                                   to using SLURM_JOB_NODELIST (can be used multiple times)\n"
+      "    -l/--nodelist=<file>           read node expressions from the given <file>; use a dash\n"
+      "                                   (-) to read from stdin (can be used multiple times)\n"
+      "    -X/--exclude-env=<varname>     remove all hosts present in the environment variable\n"
+      "                                   <varname> from the final node list\n"
+      "    -x--exclude=<host expression>  remove hosts from the final node list\n"
+      "    -u/--unique                    remove any duplicate names (for expand and compress\n"
+      "                                   modes)\n"
       "\n"
       "    NOTE:  In the expand/compress modes, if no host lists are explicitly added then\n"
       "           SLURM_JOB_NODELIST is checked by default.\n"
       "\n"
       "  MACHINEFILE MODE\n"
       "\n"
-      "    -m/--machinefile             generate a MPI-style machine file using the\n"
-      "                                 SLURM_JOB_NODELIST and SLURM_TASKS_PER_NODE\n"
-      "                                 environment variables\n"
-      "      -f/--format=<line-format>  apply the given <line-format> to each host in the\n"
-      "                                 list; the <line-format> can include the following\n"
-      "                                 tokens that are filled-in for each host:\n"
+      "    -m/--machinefile               generate a MPI-style machine file using the\n"
+      "                                   SLURM_JOB_NODELIST and SLURM_TASKS_PER_NODE\n"
+      "                                   environment variables\n"
+      "      -f/--format=<line-format>    apply the given <line-format> to each host in the\n"
+      "                                   list; the <line-format> can include the following\n"
+      "                                   tokens that are filled-in for each host:\n"
       "\n"
-      "                                   %%%%       literal percent sign\n"
-      "                                   %%h      host name\n"
-      "                                   %%c      rank count\n"
-      "                                   %%C      optional rank count (omitted if 1)\n"
-      "                                   %%[:]c   rank count with preceding colon\n"
-      "                                   %%[:]C   optional rank count with preceding colon\n"
+      "                                     %%%%       literal percent sign\n"
+      "                                     %%h      host name\n"
+      "                                     %%c      rank count\n"
+      "                                     %%C      optional rank count (omitted if 1)\n"
+      "                                     %%[:]c   rank count with preceding colon\n"
+      "                                     %%[:]C   optional rank count with preceding colon\n"
       "\n"
-      "                                 the colon in the latter two tokens can be any string\n"
-      "                                 of punctuation in the set [-_:;.,/\\|] or whitespace\n"
-      "      -n/--no-repeats            if the <line-format> lacks a count token, do not\n"
-      "                                 repeat the line once for each task on the host\n"
+      "                                   the colon in the latter two tokens can be any string\n"
+      "                                   of punctuation in the set [-_:;.,/\\|] or whitespace\n"
+      "      -n/--no-repeats              if the <line-format> lacks a count token, do not\n"
+      "                                   repeat the line once for each task on the host\n"
       "\n"
       ,
       exe
@@ -285,6 +290,7 @@ add_from_file(
 void
 print_machinefile(
   hostlist_t    the_hostlist,
+  hostlist_t    the_hostlist_exclusions,
   task_count_t  *tc,
   const char    *format,
   bool          no_repeats
@@ -316,6 +322,8 @@ print_machinefile(
     int         task_count = -1;
 
     if ( ! node_name ) break;
+    
+    if ( slurm_hostlist_find(the_hostlist_exclusions, node_name) != -1 ) continue;
 
     task_count = task_count_next(tc);
     if ( task_count <= 0 ) break;
@@ -457,6 +465,7 @@ main(
   const char        *delimiter = snodelist_default_delimiter;
   const char        *machinefile_format = "%h%[:]C";
   hostlist_t        hostlist = slurm_hostlist_create("");
+  hostlist_t        hostlist_exclude = slurm_hostlist_create("");
 
   while ( (optc = getopt_long(argc, argv, snodelist_opts_string, snodelist_opts, NULL)) != -1 ) {
     switch ( optc ) {
@@ -495,6 +504,24 @@ main(
           }
         } else {
           fprintf(stderr, "ERROR:  invalid file path provided with -f/--nodelist option\n");
+          exit(EINVAL);
+        }
+        break;
+    
+      case 'X':
+        if ( optarg && *optarg ) {
+          add_from_env(hostlist_exclude, optarg);
+        } else {
+          fprintf(stderr, "ERROR:  no variable name provided with -X/--exclude-env option\n");
+          exit(EINVAL);
+        }
+        break;
+        
+      case 'x':
+        if ( optarg && *optarg ) {
+          slurm_hostlist_push(hostlist_exclude, optarg);
+        } else {
+          fprintf(stderr, "ERROR:  no host list provided with -x/--exclude option\n");
           exit(EINVAL);
         }
         break;
@@ -547,7 +574,7 @@ main(
 
     hostlist = slurm_hostlist_create(node_list);
     if ( slurm_hostlist_count(hostlist) > 0 ) {
-      print_machinefile(hostlist, &tc, machinefile_format, no_repeats);
+      print_machinefile(hostlist, hostlist_exclude, &tc, machinefile_format, no_repeats);
     }
   } else {
     if ( optind == argc && ! did_include_an_env_var ) add_from_env(hostlist, "SLURM_JOB_NODELIST");
@@ -567,8 +594,10 @@ main(
           bool      showDelim = false;
 
           while ( (outNode = slurm_hostlist_shift(hostlist)) ) {
-            printf("%s%s", (showDelim ? delimiter : ""), outNode);
-            showDelim = true;
+            if ( slurm_hostlist_find(hostlist_exclude, outNode) == -1 ) {
+              printf("%s%s", (showDelim ? delimiter : ""), outNode);
+              showDelim = true;
+            }
             free((void*)outNode);
           }
           fputc('\n', stdout);
@@ -576,8 +605,23 @@ main(
         }
 
         case snodelist_mode_compress: {
-          char      *outList = slurm_hostlist_ranged_string_malloc(hostlist);
+          char      *outList = NULL;
+          
+          if ( slurm_hostlist_count(hostlist_exclude) == 0 ) {
+            outList = slurm_hostlist_ranged_string_malloc(hostlist);
+          } else {
+            hostlist_t  filtered_hostlist = slurm_hostlist_create("");
+            char        *outNode;
 
+            while ( (outNode = slurm_hostlist_shift(hostlist)) ) {
+              if ( slurm_hostlist_find(hostlist_exclude, outNode) == -1 ) {
+                slurm_hostlist_push_host(filtered_hostlist, outNode);
+              }
+              free((void*)outNode);
+            }
+            outList = slurm_hostlist_ranged_string_malloc(filtered_hostlist);
+            slurm_hostlist_destroy(filtered_hostlist);
+          }
           if ( outList ) {
             printf("%s\n", outList);
             free((void*)outList);
@@ -588,6 +632,7 @@ main(
       }
     }
   }
+  slurm_hostlist_destroy(hostlist_exclude);
   slurm_hostlist_destroy(hostlist);
 
   return 0;
