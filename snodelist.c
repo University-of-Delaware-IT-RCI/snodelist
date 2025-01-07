@@ -32,9 +32,41 @@
 #include "slurm/slurm.h"
 
 #if SLURM_VERSION_NUMBER >= SLURM_VERSION_NUM(23,11,0)
-#   define HOSTLIST_T    hostlist_t*
+#   define HOSTLIST_T               hostlist_t*
+#   define GET_HOSTLIST_CSTR(X)     __hostlist_to_cstr((X))
+#   define FREE_HOSTLIST_CSTR(X)
+    char*
+    __hostlist_to_cstr(HOSTLIST_T a_hostlist)
+    {
+        static char*    __buffer = NULL;
+        static size_t   __buffer_len = 0;
+
+        while ( 1 ) {
+            ssize_t     cstr_len = slurm_hostlist_ranged_string(a_hostlist, __buffer_len, __buffer);
+
+            if ( cstr_len < 0 ) {
+                /* Need to extend the buffer...sadly, we didn't get any feedback re: what length would be
+                 * sufficient...
+                 */
+                size_t  new_buffer_len = __buffer_len + 4096;
+                char    *new_buffer = realloc(__buffer, new_buffer_len);
+
+                if ( ! new_buffer ) {
+                    fprintf(stderr, "FATAL:  unable to allocate memory for node list string\n");
+                    exit(ENOMEM);
+                }
+                __buffer = new_buffer;
+                __buffer_len = new_buffer_len;
+            } else {
+                break;
+            }
+        }
+        return __buffer;
+    }
 #else
-#   define HOSTLIST_T    hostlist_t
+#   define HOSTLIST_T               hostlist_t
+#   define GET_HOSTLIST_CSTR(X)     slurm_hostlist_ranged_string_malloc((X))
+#   define FREE_HOSTLIST_CSTR(X)    free((void*)(X))
 #endif
 
 //
@@ -615,7 +647,7 @@ main(
                     char      *outList = NULL;
           
                     if ( slurm_hostlist_count(hostlist_exclude) == 0 ) {
-                        outList = slurm_hostlist_ranged_string_malloc(hostlist);
+                        outList = GET_HOSTLIST_CSTR(hostlist);
                     } else {
                         HOSTLIST_T  filtered_hostlist = slurm_hostlist_create("");
                         char        *outNode;
@@ -626,12 +658,12 @@ main(
                             }
                             free((void*)outNode);
                         }
-                        outList = slurm_hostlist_ranged_string_malloc(filtered_hostlist);
+                        outList = GET_HOSTLIST_CSTR(filtered_hostlist);
                         slurm_hostlist_destroy(filtered_hostlist);
                     }
                     if ( outList ) {
                         printf("%s\n", outList);
-                        free((void*)outList);
+                        FREE_HOSTLIST_CSTR(outList);
                     }
                     break;
                 }
