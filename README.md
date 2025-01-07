@@ -79,3 +79,49 @@ usage:
 
 ```
 
+## Building the program
+
+The CMake build system is used to compile and link the utility.  There is one optional (well, somewhat) variable that must be defined for CMake:
+
+```bash
+[prompt]$ mkdir build-2025.01.07 ; cd build-2025.01.07
+[prompt]$ cmake -DSLURM_PREFIX=/path/where/slurm/is/installed ..
+```
+
+If the `SLURM_PREFIX` is not provided, it defaults to `/usr/local`.
+
+
+If your build of Slurm used a different compiler toolchain, make sure to indicate the correct C compiler:
+
+```bash
+[prompt]$ CC=/path/to/C/compiler cmake -DSLURM_PREFIX=/path/where/slurm/is/installed ..
+```
+
+For the sake of installation of the utility via CMake, the base install path should be provided:
+
+```bash
+[prompt]$ CC=/path/to/C/compiler cmake -DSLURM_PREFIX=/path/where/slurm/is/installed \
+          -DCMAKE_INSTALL_PREFIX=/path/wherein/to/install ..
+```
+
+If no install path is provided, it defaults to `/usr/local`.  The build can then be accomplished using `make`
+
+```bash
+[prompt]$ make
+[ 50%] Building C object CMakeFiles/snodelist.dir/snodelist.c.o
+[100%] Linking C executable snodelist
+[100%] Built target snodelist
+```
+
+and installation can be effected (possibly with `sudo` if the destination is not writable by you)
+
+```bash
+[prompt]$ make install
+[100%] Built target snodelist
+Install the project...
+-- Install configuration: ""
+-- Installing: /path/wherein/to/install/bin/snodelist
+-- Set non-toolchain portion of runtime path of "/path/wherein/to/install/bin/snodelist" to "/path/where/slurm/is/installed/lib"
+```
+
+Note the `bin` directory is appended to the install path for the location at which the utility is installed.
