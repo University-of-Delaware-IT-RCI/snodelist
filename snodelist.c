@@ -31,6 +31,12 @@
 #include <getopt.h>
 #include "slurm/slurm.h"
 
+#if SLURM_VERSION_NUMBER >= SLURM_VERSION_NUM(23,11,0)
+#   define HOSTLIST_T    hostlist_t*
+#else
+#   define HOSTLIST_T    hostlist_t
+#endif
+
 //
 
 typedef enum {
@@ -224,7 +230,7 @@ task_count_next(
 
 void
 add_from_env(
-    hostlist_t    the_hostlist,
+    HOSTLIST_T    the_hostlist,
     const char    *env_var_name
 )
 {
@@ -237,7 +243,7 @@ add_from_env(
 
 bool
 add_from_file(
-    hostlist_t    the_hostlist,
+    HOSTLIST_T    the_hostlist,
     const char    *file
 )
 {
@@ -290,8 +296,8 @@ add_from_file(
 
 void
 print_machinefile(
-    hostlist_t    the_hostlist,
-    hostlist_t    the_hostlist_exclusions,
+    HOSTLIST_T    the_hostlist,
+    HOSTLIST_T    the_hostlist_exclusions,
     task_count_t  *tc,
     const char    *format,
     bool          no_repeats
@@ -465,8 +471,8 @@ main(
     bool              no_repeats = false;
     const char        *delimiter = snodelist_default_delimiter;
     const char        *machinefile_format = "%h%[:]C";
-    hostlist_t        hostlist = slurm_hostlist_create("");
-    hostlist_t        hostlist_exclude = slurm_hostlist_create("");
+    HOSTLIST_T        hostlist = slurm_hostlist_create("");
+    HOSTLIST_T        hostlist_exclude = slurm_hostlist_create("");
 
     while ( (optc = getopt_long(argc, argv, snodelist_opts_string, snodelist_opts, NULL)) != -1 ) {
         switch ( optc ) {
@@ -611,7 +617,7 @@ main(
                     if ( slurm_hostlist_count(hostlist_exclude) == 0 ) {
                         outList = slurm_hostlist_ranged_string_malloc(hostlist);
                     } else {
-                        hostlist_t  filtered_hostlist = slurm_hostlist_create("");
+                        HOSTLIST_T  filtered_hostlist = slurm_hostlist_create("");
                         char        *outNode;
 
                         while ( (outNode = slurm_hostlist_shift(hostlist)) ) {
